@@ -930,6 +930,19 @@ setInterval(poll, 1500);
 
 # ── CLI Entry Point ────────────────────────────────────────
 
+def _get_lan_ip():
+    """Best-effort LAN IP via UDP socket (no traffic sent)."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip if not ip.startswith("127.") else None
+    except Exception:
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Claude Code Live — real-time session transcript viewer"
@@ -980,7 +993,10 @@ def main():
 
     if port != args.port:
         print(f"  Note:     port {args.port} in use, using {port}")
-    print(f"  Server:   http://0.0.0.0:{port}")
+    print(f"  Local:    http://localhost:{port}")
+    lan_ip = _get_lan_ip()
+    if lan_ip:
+        print(f"  Network:  http://{lan_ip}:{port}")
     print()
 
     try:
