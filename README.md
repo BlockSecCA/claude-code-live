@@ -39,7 +39,7 @@ git clone https://github.com/BlockSecCA/claude-code-live.git
 pipx install ./claude-code-live
 ```
 
-No dependencies beyond Python 3.10+.
+No dependencies beyond Python 3.10+. Tested on Linux and expected to work on macOS. Windows is not supported — PRs welcome.
 
 ## Usage
 
