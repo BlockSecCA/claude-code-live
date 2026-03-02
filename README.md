@@ -77,6 +77,10 @@ Default port is `7777`. If that port is in use (e.g. another instance is already
 2. Discovers subagent transcripts in the session's `subagents/` directory and inlines them at the point they were invoked
 3. Serves the viewer page and exposes `/api/entries?after=N` — the page polls this endpoint every 1.5 seconds for new lines
 
+## Caveat
+
+Claude Code's `.jsonl` transcript format and storage location (`~/.claude/projects/`) are not officially documented by Anthropic. This tool is based on reverse-engineering the current format. If Anthropic changes the log structure or location, claude-code-live may break until updated.
+
 ## Acknowledgments
 
 Inspired by Simon Willison's [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) — a tool for saving and sharing Claude Code transcripts as static HTML. claude-code-live takes a different angle: watch the session unfold in real time instead of reviewing it after the fact.
