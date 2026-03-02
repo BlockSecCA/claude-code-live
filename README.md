@@ -1,4 +1,4 @@
-# claude-live
+# claude-code-live
 
 A real-time web viewer for Claude Code session transcripts.
 
@@ -14,7 +14,7 @@ Read 8 files (ctrl+o to expand)
 
 ...instead of what actually happened.
 
-**claude-live** gives you a live, scrollable web view of the full session transcript as it happens. Every tool call, every result, every thinking block — laid out in a readable timeline that updates in real time.
+**claude-code-live** gives you a live, scrollable web view of the full session transcript as it happens. Every tool call, every result, every thinking block — laid out in a readable timeline that updates in real time.
 
 Think of it as [Simon Willison's claude-code-transcripts](https://github.com/simonw/claude-code-transcripts), but live.
 
@@ -28,38 +28,58 @@ Think of it as [Simon Willison's claude-code-transcripts](https://github.com/sim
 - **Zero dependencies** — Python 3.10+ stdlib only
 - **Single file** — the entire server, parser, and UI live in `claude_live.py`
 
-## Quick start
-
-Auto-find the latest session and serve it:
+## Install
 
 ```bash
-python3 claude_live.py
+pipx install claude-code-live
 ```
 
-Or point it at a specific session file:
+Or install from a local clone:
 
 ```bash
-python3 claude_live.py /path/to/session.jsonl --port 7777
+git clone https://github.com/carlosplanchon/claude-code-live.git
+pipx install ./claude-code-live
 ```
 
-Then open `http://localhost:7777` in your browser.
+No dependencies beyond Python 3.10+.
 
-If you're running Claude Code on a remote/headless machine (common setup), open `http://<machine-ip>:7777` from any browser on your network. The server binds to `0.0.0.0` by default.
+## Usage
+
+**Watch a live session** — run this while Claude Code is active in another terminal:
+
+```bash
+claude-code-live
+```
+
+With no arguments, claude-code-live auto-detects the most recent session file under `~/.claude/projects/`. If Claude Code is running, that's your current session — the viewer updates in real time as new entries appear.
+
+**Review a past session** — point it at any `.jsonl` transcript:
+
+```bash
+claude-code-live /path/to/session.jsonl
+```
+
+The behavior is the same either way: serve the file and poll for new lines. A live session keeps growing; a finished one just renders what's there.
+
+**Options:**
+
+```
+claude-code-live [session.jsonl] [--port PORT]
+```
+
+Default port is `7777`. If that port is in use (e.g. another instance is already running), it will automatically try the next available port. The server binds to `0.0.0.0`, so on a remote/headless machine (common with Claude Code), open `http://<machine-ip>:<port>` from any browser on your network.
 
 ## How it works
 
-`claude_live.py` is a Python HTTP server that:
+`claude_live.py` is a single Python file — HTTP server, JSONL parser, and embedded HTML/CSS/JS viewer. It:
 
 1. Reads a Claude Code `.jsonl` session file and parses each line into structured entries (messages, tool calls, tool results, thinking blocks)
 2. Discovers subagent transcripts in the session's `subagents/` directory and inlines them at the point they were invoked
-3. Serves an embedded HTML/CSS/JS page as the viewer
-4. Exposes `/api/entries?after=N` — the page polls this endpoint every 1.5 seconds for new lines, so the view updates live as the session progresses
-
-No build step, no node_modules, no pip install. Just Python and a browser.
+3. Serves the viewer page and exposes `/api/entries?after=N` — the page polls this endpoint every 1.5 seconds for new lines
 
 ## Acknowledgments
 
-Inspired by Simon Willison's [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) — a tool for saving and sharing Claude Code transcripts as static HTML. claude-live takes a different angle: watch the session unfold in real time instead of reviewing it after the fact.
+Inspired by Simon Willison's [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) — a tool for saving and sharing Claude Code transcripts as static HTML. claude-code-live takes a different angle: watch the session unfold in real time instead of reviewing it after the fact.
 
 ## License
 

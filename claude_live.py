@@ -3,7 +3,7 @@
 Claude Code Live — real-time web viewer for session transcripts.
 
 Usage:
-    python3 claude_live.py [session.jsonl] [--port PORT]
+    python3 claude_live.py [session.jsonl] [--port PORT]  (or: claude-code-live)
 
 If no path given, watches the most recently modified session in
 ~/.claude/projects/
@@ -946,21 +946,42 @@ def main():
 
     if args.session:
         session_path = Path(args.session).resolve()
+        source = "provided"
     else:
         session_path = find_latest_session()
+        source = "auto-detected"
 
     if not session_path or not session_path.exists():
         print("Error: no session file found.", file=sys.stderr)
-        print("Usage: python3 claude_live.py [path/to/session.jsonl]", file=sys.stderr)
+        print("Usage: claude-code-live [path/to/session.jsonl]", file=sys.stderr)
         sys.exit(1)
 
-    print(f"  Watching: {session_path.name}")
+    print(f"  Session:  {session_path} ({source})")
     print(f"  Size:     {session_path.stat().st_size:,} bytes")
-    print(f"  URL:      http://localhost:{args.port}")
-    print()
 
     LiveHandler.session_path = str(session_path)
-    server = HTTPServer(("0.0.0.0", args.port), LiveHandler)
+    port = args.port
+    server = None
+    for attempt in range(10):
+        try:
+            server = HTTPServer(("0.0.0.0", port), LiveHandler)
+            break
+        except OSError as e:
+            if e.errno == 98:
+                port += 1
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+
+    if server is None:
+        print(f"Error: ports {args.port}–{port} are all in use.", file=sys.stderr)
+        print(f"Specify a port: claude-code-live --port PORT", file=sys.stderr)
+        sys.exit(1)
+
+    if port != args.port:
+        print(f"  Note:     port {args.port} in use, using {port}")
+    print(f"  Server:   http://0.0.0.0:{port}")
+    print()
 
     try:
         server.serve_forever()

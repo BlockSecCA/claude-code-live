@@ -1,5 +1,5 @@
 [project]
-name = "claude-live"
+name = "claude-code-live"
 version = "0.1.0"
 description = "Real-time web viewer for Claude Code session transcripts"
 readme = "README.md"
@@ -17,7 +17,7 @@ classifiers = [
 ]
 
 [project.scripts]
-claude-live = "claude_live:main"
+claude-code-live = "claude_live:main"
 
 [build-system]
 requires = ["setuptools>=68.0"]

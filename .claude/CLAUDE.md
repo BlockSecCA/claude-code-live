@@ -1,4 +1,4 @@
-# claude-live
+# claude-code-live
 
 Live web viewer for Claude Code session transcripts.
 
