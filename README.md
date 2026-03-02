@@ -37,7 +37,7 @@ pipx install claude-code-live
 Or install from a local clone:
 
 ```bash
-git clone https://github.com/carlosplanchon/claude-code-live.git
+git clone https://github.com/BlockSecCA/claude-code-live.git
 pipx install ./claude-code-live
 ```
 
