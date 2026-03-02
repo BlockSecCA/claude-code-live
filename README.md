@@ -44,6 +44,8 @@ python3 claude_live.py /path/to/session.jsonl --port 7777
 
 Then open `http://localhost:7777` in your browser.
 
+If you're running Claude Code on a remote/headless machine (common setup), open `http://<machine-ip>:7777` from any browser on your network. The server binds to `0.0.0.0` by default.
+
 ## How it works
 
 `claude_live.py` is a Python HTTP server that:
