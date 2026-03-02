@@ -75,9 +75,17 @@ Default port is `7777`. If that port is in use (e.g. another instance is already
 2. Discovers subagent transcripts in the session's `subagents/` directory and inlines them at the point they were invoked
 3. Serves the viewer page and exposes `/api/entries?after=N` — the page polls this endpoint every 1.5 seconds for new lines
 
-## Caveat
+## Caveats
 
-Claude Code's `.jsonl` transcript format and storage location (`~/.claude/projects/`) are not officially documented by Anthropic. This tool is based on reverse-engineering the current format. If Anthropic changes the log structure or location, claude-code-live may break until updated.
+- **Session auto-detection is best-effort.** With no arguments, claude-code-live picks the most recently modified `.jsonl` file under `~/.claude/projects/`. This is usually the active session, but not always — if you have multiple Claude Code instances running, or recently closed sessions, it may pick the wrong one. When in doubt, ask Claude Code which session file it's using and pass that path explicitly:
+
+  ```bash
+  claude-code-live /path/to/session.jsonl
+  ```
+
+  We considered smarter heuristics (matching by CWD, project, etc.) but the edge cases make it unreliable. Explicit paths are the safe option.
+
+- **Undocumented format.** Claude Code's `.jsonl` transcript format and storage location (`~/.claude/projects/`) are not officially documented by Anthropic. This tool is based on reverse-engineering the current format. If Anthropic changes the log structure or location, claude-code-live may break until updated.
 
 ## Acknowledgments
 
