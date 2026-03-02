@@ -16,8 +16,6 @@ Read 8 files (ctrl+o to expand)
 
 **claude-code-live** gives you a live, scrollable web view of the full session transcript as it happens. Every tool call, every result, every thinking block — laid out in a readable timeline that updates in real time.
 
-Think of it as [Simon Willison's claude-code-transcripts](https://github.com/simonw/claude-code-transcripts), but live.
-
 ## Features
 
 - **Live polling** — checks for new entries every 1.5 seconds
