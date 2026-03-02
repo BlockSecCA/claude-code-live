@@ -967,7 +967,7 @@ def main():
             server = HTTPServer(("0.0.0.0", port), LiveHandler)
             break
         except OSError as e:
-            if e.errno == 98:
+            if e.errno in (98, 48, 10048):  # Linux, macOS, Windows
                 port += 1
             else:
                 print(f"Error: {e}", file=sys.stderr)
