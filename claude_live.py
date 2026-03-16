@@ -13,6 +13,7 @@ import json
 import sys
 import re
 import argparse
+from datetime import datetime
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
@@ -30,6 +31,62 @@ def find_latest_session():
     if not jsonls:
         return None
     return max(jsonls, key=lambda p: p.stat().st_mtime)
+
+
+def pick_session():
+    """Interactive session picker. If one session exists, return it.
+    If multiple, show a numbered list and let the user choose.
+    All prompts go to stderr so stdout stays clean."""
+    base = Path.home() / ".claude" / "projects"
+    if not base.exists():
+        return None
+    jsonls = [p for p in base.rglob("*.jsonl") if "/subagents/" not in str(p)]
+    if not jsonls:
+        return None
+    if len(jsonls) == 1:
+        return jsonls[0]
+
+    # Sort by mtime descending (most recent first)
+    jsonls.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    print("\nAvailable sessions:\n", file=sys.stderr)
+    print(f"  {'#':>3}  {'Session UUID':<38}  {'Project':<24}  {'Size':>10}  {'Modified'}", file=sys.stderr)
+    print(f"  {'─'*3}  {'─'*38}  {'─'*24}  {'─'*10}  {'─'*19}", file=sys.stderr)
+
+    for i, p in enumerate(jsonls, 1):
+        st = p.stat()
+        size = st.st_size
+        if size >= 1_048_576:
+            size_str = f"{size / 1_048_576:.1f} MB"
+        elif size >= 1024:
+            size_str = f"{size / 1024:.1f} KB"
+        else:
+            size_str = f"{size} B"
+        mtime = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        project = p.parent.name
+        print(f"  {i:>3}  {p.stem:<38}  {project:<24}  {size_str:>10}  {mtime}", file=sys.stderr)
+
+    print(file=sys.stderr)
+    try:
+        choice = input("Pick a session [1]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print(file=sys.stderr)
+        return None
+
+    if not choice:
+        idx = 0
+    else:
+        try:
+            idx = int(choice) - 1
+        except ValueError:
+            print(f"Invalid choice: {choice}", file=sys.stderr)
+            return None
+
+    if idx < 0 or idx >= len(jsonls):
+        print(f"Out of range: {idx + 1}", file=sys.stderr)
+        return None
+
+    return jsonls[idx]
 
 
 def _find_subagent_dir(session_path):
@@ -245,6 +302,7 @@ def _parse_tool_result(block):
 
 class LiveHandler(SimpleHTTPRequestHandler):
     session_path = None
+    poll_interval_ms = 1500
 
     def log_message(self, fmt, *args):
         pass
@@ -253,8 +311,14 @@ class LiveHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/":
-            self._respond(200, "text/html", HTML)
+            html = HTML.replace("__POLL_INTERVAL_MS__", str(self.poll_interval_ms))
+            self._respond(200, "text/html", html)
         elif parsed.path == "/api/entries":
+            if not Path(self.session_path).exists():
+                self._respond(200, "application/json", json.dumps({
+                    "gone": True
+                }))
+                return
             qs = parse_qs(parsed.query)
             after = int(qs.get("after", ["0"])[0])
             entries, cursor = parse_session(self.session_path, after)
@@ -276,7 +340,10 @@ class LiveHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", len(data))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
 
 # ── Embedded UI ────────────────────────────────────────────
@@ -311,8 +378,6 @@ HTML = r"""<!DOCTYPE html>
     --font-size: 15px;
     --code-size: 13.5px;
   }
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
   html { font-size: var(--font-size); }
   body {
     font-family: var(--sans);
@@ -404,11 +469,6 @@ HTML = r"""<!DOCTYPE html>
   .setting-row .val {
     font-family: var(--mono); font-size: 0.7rem;
     color: var(--text-dim); min-width: 3.5em; text-align: right;
-  }
-  .setting-row input[type="color"] {
-    width: 28px; height: 28px; border: none;
-    border-radius: 4px; cursor: pointer;
-    background: none; padding: 0;
   }
   .preset-row {
     display: flex; gap: 0.4rem; margin-top: 0.5rem;
@@ -658,31 +718,12 @@ HTML = r"""<!DOCTYPE html>
     <span class="val" id="codeSizeVal">13.5px</span>
   </div>
 
-  <div class="setting-row">
-    <label>Code text color</label>
-    <input type="color" id="codeColor" value="#c8d5e4">
-    <span class="val" id="codeColorVal">#c8d5e4</span>
-  </div>
-
-  <div class="setting-row">
-    <label>Body text color</label>
-    <input type="color" id="textColor" value="#e2e8f0">
-    <span class="val" id="textColorVal">#e2e8f0</span>
-  </div>
-
-  <div class="setting-row">
-    <label>Muted text color</label>
-    <input type="color" id="mutedColor" value="#b8c4d4">
-    <span class="val" id="mutedColorVal">#b8c4d4</span>
-  </div>
-
-  <div style="margin-top:0.75rem;">
-    <label style="font-size:0.75rem;color:var(--text-dim);">Presets</label>
-    <div class="preset-row">
-      <button class="preset-btn" data-preset="default">Default</button>
-      <button class="preset-btn" data-preset="bright">Bright</button>
-      <button class="preset-btn" data-preset="large">Large</button>
-      <button class="preset-btn" data-preset="compact">Compact</button>
+  <div style="margin-top:0.5rem;">
+    <label style="font-size:0.75rem;color:var(--text-dim);">Theme</label>
+    <div class="preset-row" style="margin-top:0.3rem;">
+      <button class="preset-btn theme-btn" data-theme="dark">Dark</button>
+      <button class="preset-btn theme-btn" data-theme="mid">Mid</button>
+      <button class="preset-btn theme-btn" data-theme="light">Light</button>
     </div>
   </div>
 </div>
@@ -805,10 +846,20 @@ function renderEntry(e) {
   return `<div class="entry">${blocks}</div>`;
 }
 
+let pollTimer = null;
 async function poll() {
   try {
     const r = await fetch(`/api/entries?after=${cursor}`);
     const d = await r.json();
+    if (d.gone) {
+      const dot = document.querySelector('.dot');
+      const status = document.querySelector('.status');
+      if (dot) dot.style.background = 'var(--danger)';
+      if (dot) dot.style.animation = 'none';
+      if (status) { status.style.color = 'var(--danger)'; status.innerHTML = '<span class="dot" style="background:var(--danger);animation:none"></span> session ended'; }
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      return;
+    }
     if (d.entries.length) {
       const frag = document.createDocumentFragment();
       const wrap = document.createElement('div');
@@ -852,65 +903,75 @@ function bindSlider(id, cssVar, unit, valId) {
     saveSettings();
   };
 }
-function bindColor(id, cssVar, valId) {
-  const picker = $(id);
-  const display = $(valId);
-  picker.oninput = () => {
-    root.style.setProperty(cssVar, picker.value);
-    display.textContent = picker.value;
-    saveSettings();
-  };
-}
 
 bindSlider('fontSize', '--font-size', 'px', 'fontSizeVal');
 bindSlider('codeSize', '--code-size', 'px', 'codeSizeVal');
-bindColor('codeColor', '--text-code', 'codeColorVal');
-bindColor('textColor', '--text', 'textColorVal');
-bindColor('mutedColor', '--text-muted', 'mutedColorVal');
 
-const presets = {
-  default: { fontSize:15, codeSize:13.5, codeColor:'#c8d5e4', textColor:'#e2e8f0', mutedColor:'#b8c4d4' },
-  bright:  { fontSize:15, codeSize:14, codeColor:'#e8eef6', textColor:'#f1f5f9', mutedColor:'#cbd5e1' },
-  large:   { fontSize:18, codeSize:16, codeColor:'#dce4f0', textColor:'#f1f5f9', mutedColor:'#c8d4e2' },
-  compact: { fontSize:13, codeSize:12, codeColor:'#b8c4d4', textColor:'#d4dce8', mutedColor:'#9cabb8' },
+const themes = {
+  dark: {
+    '--bg':'#0f1117','--bg-card':'#181a24','--bg-tool':'#1c1f30',
+    '--bg-result':'#161924','--bg-thinking':'#1c1a28',
+    '--accent':'#7c5cfc','--accent-dim':'rgba(124,92,252,0.15)',
+    '--text':'#e2e8f0','--text-muted':'#b8c4d4','--text-dim':'#8494a7',
+    '--text-code':'#c8d5e4','--border':'rgba(255,255,255,0.06)',
+  },
+  mid: {
+    '--bg':'#1e2030','--bg-card':'#262840','--bg-tool':'#2a2d48',
+    '--bg-result':'#232538','--bg-thinking':'#282a42',
+    '--accent':'#8b6cff','--accent-dim':'rgba(139,108,255,0.15)',
+    '--text':'#d4dce8','--text-muted':'#a8b4c4','--text-dim':'#7a8a9c',
+    '--text-code':'#bcc8d8','--border':'rgba(255,255,255,0.08)',
+  },
+  light: {
+    '--bg':'#f5f5f5','--bg-card':'#ffffff','--bg-tool':'#f0f0f4',
+    '--bg-result':'#fafafa','--bg-thinking':'#f4f2fb',
+    '--accent':'#6b4fd8','--accent-dim':'rgba(107,79,216,0.1)',
+    '--text':'#1a1a2e','--text-muted':'#4a4a6a','--text-dim':'#7a7a9a',
+    '--text-code':'#2d2d4e','--border':'rgba(0,0,0,0.08)',
+  },
 };
+let currentTheme = 'dark';
 
-document.querySelectorAll('.preset-btn').forEach(btn => {
-  btn.onclick = () => {
-    const p = presets[btn.dataset.preset];
-    if (!p) return;
-    applySettings(p);
-    saveSettings();
-  };
-});
-
-function applySettings(s) {
-  root.style.setProperty('--font-size', s.fontSize + 'px');
-  root.style.setProperty('--code-size', s.codeSize + 'px');
-  root.style.setProperty('--text-code', s.codeColor);
-  root.style.setProperty('--text', s.textColor);
-  root.style.setProperty('--text-muted', s.mutedColor);
-  $('fontSize').value = s.fontSize; $('fontSizeVal').textContent = s.fontSize + 'px';
-  $('codeSize').value = s.codeSize; $('codeSizeVal').textContent = s.codeSize + 'px';
-  $('codeColor').value = s.codeColor; $('codeColorVal').textContent = s.codeColor;
-  $('textColor').value = s.textColor; $('textColorVal').textContent = s.textColor;
-  $('mutedColor').value = s.mutedColor; $('mutedColorVal').textContent = s.mutedColor;
+function applyTheme(name) {
+  const t = themes[name];
+  if (!t) return;
+  currentTheme = name;
+  for (const [k, v] of Object.entries(t)) root.style.setProperty(k, v);
+  document.querySelectorAll('.theme-btn').forEach(b => {
+    b.style.borderColor = b.dataset.theme === name ? 'var(--accent)' : '';
+    b.style.fontWeight = b.dataset.theme === name ? '700' : '';
+  });
+  saveSettings();
 }
+
+document.querySelectorAll('.theme-btn').forEach(btn => {
+  btn.onclick = () => applyTheme(btn.dataset.theme);
+});
 
 function saveSettings() {
   const s = {
     fontSize: parseFloat($('fontSize').value),
     codeSize: parseFloat($('codeSize').value),
-    codeColor: $('codeColor').value,
-    textColor: $('textColor').value,
-    mutedColor: $('mutedColor').value,
+    theme: currentTheme,
   };
   localStorage.setItem('claude-live-settings', JSON.stringify(s));
 }
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem('claude-live-settings'));
-    if (s) applySettings(s);
+    if (s) {
+      if (s.theme) applyTheme(s.theme);
+      if (s.fontSize) {
+        root.style.setProperty('--font-size', s.fontSize + 'px');
+        $('fontSize').value = s.fontSize;
+        $('fontSizeVal').textContent = s.fontSize + 'px';
+      }
+      if (s.codeSize) {
+        root.style.setProperty('--code-size', s.codeSize + 'px');
+        $('codeSize').value = s.codeSize;
+        $('codeSizeVal').textContent = s.codeSize + 'px';
+      }
+    }
   } catch {}
 }
 loadSettings();
@@ -921,7 +982,7 @@ fetch('/api/info').then(r=>r.json()).then(d => {
 });
 
 poll();
-setInterval(poll, 1500);
+pollTimer = setInterval(poll, __POLL_INTERVAL_MS__);
 </script>
 </body>
 </html>
@@ -955,13 +1016,17 @@ def main():
         "--port", type=int, default=7777,
         help="HTTP port (default: 7777)"
     )
+    parser.add_argument(
+        "--interval", type=float, default=1.5,
+        help="Poll interval in seconds (default: 1.5)"
+    )
     args = parser.parse_args()
 
     if args.session:
         session_path = Path(args.session).resolve()
         source = "provided"
     else:
-        session_path = find_latest_session()
+        session_path = pick_session()
         source = "auto-detected"
 
     if not session_path or not session_path.exists():
@@ -973,6 +1038,7 @@ def main():
     print(f"  Size:     {session_path.stat().st_size:,} bytes")
 
     LiveHandler.session_path = str(session_path)
+    LiveHandler.poll_interval_ms = int(args.interval * 1000)
     port = args.port
     server = None
     for attempt in range(10):
